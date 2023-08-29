@@ -1,11 +1,18 @@
 #include "primer/trie.h"
+#include <iostream>
+#include <memory>
+#include <stack>
 #include <string_view>
+#include <utility>
 #include "common/exception.h"
 
 namespace bustub {
 
 template <class T>
 auto Trie::Get(std::string_view key) const -> const T * {
+  if (!root_) {
+    return nullptr;
+  }
   std::shared_ptr<const TrieNode> cur = root_;
   for (auto chr : key) {
     if (!cur->children_.count(chr)) {
@@ -69,6 +76,27 @@ auto Trie::Put(std::string_view key, T value) const -> Trie {
   // You should walk through the trie and create new nodes if necessary. If the node corresponding to the key already
   // exists, you should create a new `TrieNodeWithValue`.
 }
+
+auto Trie::ClearNode(std::stack<std::shared_ptr<TrieNode>> stack, std::string_view key) const
+    -> std::shared_ptr<TrieNode> {
+  std::shared_ptr<TrieNode> ret = nullptr;
+  bool erase = true;
+  for (auto it = key.rbegin(); it != key.rend(); it++) {
+    ret = stack.top();
+    stack.pop();
+    if (erase) {
+      ret->children_.erase(*it);
+    }
+    erase = false;
+    if (ret->children_.empty() && !ret->is_value_node_) {
+      erase = true;
+    }
+  }
+  if (erase) {
+    return nullptr;
+  }
+  return ret;
+}
 auto Trie::Remove(std::string_view key) const -> Trie {
   if (!root_) {
     return *this;
@@ -81,12 +109,14 @@ auto Trie::Remove(std::string_view key) const -> Trie {
     return *this;
   }
 
+  std::stack<std::shared_ptr<TrieNode>> st;
   std::shared_ptr<TrieNode> new_root = root_->Clone();
   auto now = new_root;
   for (char chr : key.substr(0, key.size() - 1)) {
     if (now->children_.count(chr) == 0U) {
       return Trie{new_root};
     }
+    st.emplace(now);
     now->children_[chr] = now->children_[chr]->Clone();
     now = std::const_pointer_cast<TrieNode>(now->children_[chr]);
   }
@@ -94,15 +124,16 @@ auto Trie::Remove(std::string_view key) const -> Trie {
   if (now->children_.count(chr) == 0U) {
     return Trie{new_root};
   }
+  st.emplace(now);
   now->children_[chr] = now->children_[chr]->Clone();
 
   auto del = now->children_[chr];
-
   if (del->children_.empty()) {
-    now->children_.erase(chr);
+    new_root = ClearNode(std::move(st), key);
   } else if (del->is_value_node_) {
     now->children_[chr] = std::make_shared<const TrieNode>(del->children_);
   }
+
   return Trie{new_root};
 
   // You should walk through the trie and remove nodes if necessary. If the node doesn't contain a value any more,
@@ -113,8 +144,8 @@ auto Trie::Remove(std::string_view key) const -> Trie {
 //
 // Generally people would write the implementation of template classes and functions in the header file. However, we
 // separate the implementation into a .cpp file to make things clearer. In order to make the compiler know the
-// implementation of the template functions, we need to explicitly instantiate them here, so that they can be picked up
-// by the linker.
+// implementation of the template functions, we need to explicitly instantiate them here, so that they can be picked
+// up by the linker.
 
 template auto Trie::Put(std::string_view key, uint32_t value) const -> Trie;
 template auto Trie::Get(std::string_view key) const -> const uint32_t *;

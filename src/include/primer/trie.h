@@ -6,8 +6,10 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <stack>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -108,6 +110,8 @@ class Trie {
 
   // Create a new trie with the given root.
   explicit Trie(std::shared_ptr<const TrieNode> root) : root_(std::move(root)) {}
+
+  auto ClearNode(std::stack<std::shared_ptr<TrieNode>> stack, std::string_view key) const -> std::shared_ptr<TrieNode>;
 
  public:
   // Create an empty trie.
