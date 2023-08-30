@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -46,7 +47,25 @@ class StringExpression : public AbstractExpression {
 
   auto Compute(const std::string &val) const -> std::string {
     // TODO(student): implement upper / lower.
-    return {};
+    std::string res;
+    switch (expr_type_) {
+      case StringExpressionType::Upper:
+        res = val;
+        for (char &re : res) {
+          re = std::toupper(re);
+        }
+        break;
+      case StringExpressionType::Lower:
+        res = val;
+        for (char &re : res) {
+          re = std::tolower(re);
+        }
+        break;
+      default:
+        res = "";
+        break;
+    }
+    return res;
   }
 
   auto Evaluate(const Tuple *tuple, const Schema &schema) const -> Value override {
