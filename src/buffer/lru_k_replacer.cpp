@@ -54,7 +54,7 @@ auto LRUKContainer::FindNode(frame_id_t fid) -> std::shared_ptr<LRUKNode> {
 }
 
 void LRUKContainer::AddNode(const std::shared_ptr<LRUKNode> &node) {
-  if (node->k_ == node->history_.size() && relocate_when_need_) {
+  if (node->k_ == node->history_.size() && relocate_when_need_) {  // special case for k == 1
     other_.lock()->AddNode(node);
     return;
   }
