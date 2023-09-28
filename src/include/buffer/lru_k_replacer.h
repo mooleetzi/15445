@@ -32,11 +32,11 @@ class LRUKNode {
   /** History of last seen K timestamps of this page. Least recent timestamp stored in front. */
   // Remove maybe_unused if you start using them. Feel free to change the member variables as you want.
 
-  [[maybe_unused]] std::list<size_t> history_;
-  [[maybe_unused]] size_t k_;
-  [[maybe_unused]] frame_id_t fid_;
-  [[maybe_unused]] bool is_evictable_{false};
-  [[maybe_unused]] LRUKNode *prev_{nullptr}, *next_{nullptr};
+  std::list<size_t> history_;
+  size_t k_;
+  frame_id_t fid_;
+  bool is_evictable_{false};
+  std::shared_ptr<LRUKNode> prev_, next_;
 
   explicit LRUKNode(size_t k, frame_id_t fid, size_t timestamp);
   ~LRUKNode();
@@ -45,19 +45,19 @@ class LRUKNode {
 
 class LRUKContainer {
  public:
-  explicit LRUKContainer(LRUKContainer *);
-  void AddNode(LRUKNode *);
-  void UpdateNode(LRUKNode *, size_t timestamp);
-  void RemoveNode(LRUKNode *, bool);
-  auto FindNode(frame_id_t) -> LRUKNode *;
+  explicit LRUKContainer(const std::shared_ptr<LRUKContainer> &);
+  void AddNode(const std::shared_ptr<LRUKNode> &);
+  void UpdateNode(const std::shared_ptr<LRUKNode> &, size_t timestamp);
+  void RemoveNode(const std::shared_ptr<LRUKNode> &);
+  auto FindNode(frame_id_t) -> std::shared_ptr<LRUKNode>;
   auto Evict(frame_id_t *) -> bool;
   ~LRUKContainer();
 
  private:
-  std::unordered_map<frame_id_t, LRUKNode *> node_store_;
-  LRUKNode *head_{nullptr}, *tail_{nullptr};
+  std::unordered_map<frame_id_t, std::shared_ptr<LRUKNode>> node_store_;
+  std::shared_ptr<LRUKNode> head_, tail_;
   bool relocate_when_need_{false};
-  LRUKContainer *other_{nullptr};
+  std::weak_ptr<LRUKContainer> other_;
 };
 
 /**
@@ -174,12 +174,12 @@ class LRUKReplacer {
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
-  LRUKContainer *ctr_old_{nullptr}, *ctr_young_{nullptr};
-  [[maybe_unused]] size_t current_timestamp_{0};
-  [[maybe_unused]] size_t curr_size_{0};
-  [[maybe_unused]] size_t replacer_size_;
-  [[maybe_unused]] size_t k_;
-  [[maybe_unused]] std::mutex latch_;
+  std::shared_ptr<LRUKContainer> ctr_old_, ctr_young_;
+  size_t current_timestamp_{0};
+  size_t curr_size_{0};
+  size_t replacer_size_;
+  size_t k_;
+  std::mutex latch_;
 };
 
 }  // namespace bustub

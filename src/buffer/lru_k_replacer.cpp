@@ -12,7 +12,9 @@
 
 #include "buffer/lru_k_replacer.h"
 #include <cstddef>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include "common/config.h"
@@ -23,8 +25,8 @@ namespace bustub {
 LRUKNode::LRUKNode(size_t k, frame_id_t fid, size_t timestamp) : k_(k), fid_(fid) { history_.push_front(timestamp); }
 LRUKNode::~LRUKNode() { history_.clear(); }
 void LRUKNode::DropLinks() {
-  LRUKNode *next = this->next_;
-  LRUKNode *prev = this->prev_;
+  auto next = this->next_;
+  auto prev = this->prev_;
   if (next != nullptr) {
     next->prev_ = prev;
   }
@@ -35,24 +37,15 @@ void LRUKNode::DropLinks() {
   this->prev_ = nullptr;
 }
 
-LRUKContainer::LRUKContainer(LRUKContainer *other) {
-  if (other != nullptr) {
+LRUKContainer::LRUKContainer(const std::shared_ptr<LRUKContainer> &other) {
+  if (other) {
     this->other_ = other;
     this->relocate_when_need_ = true;
   }
 }
-LRUKContainer::~LRUKContainer() {
-  while (head_ != nullptr) {
-    LRUKNode *next = head_->next_;
-    delete head_;
-    head_ = next;
-  }
-  node_store_.clear();
-  head_ = tail_ = nullptr;
-  other_ = nullptr;
-}
+LRUKContainer::~LRUKContainer() { node_store_.clear(); }
 
-auto LRUKContainer::FindNode(frame_id_t fid) -> LRUKNode * {
+auto LRUKContainer::FindNode(frame_id_t fid) -> std::shared_ptr<LRUKNode> {
   auto it = node_store_.find(fid);
   if (it == node_store_.end()) {
     return nullptr;
@@ -60,9 +53,9 @@ auto LRUKContainer::FindNode(frame_id_t fid) -> LRUKNode * {
   return it->second;
 }
 
-void LRUKContainer::AddNode(LRUKNode *node) {
-  if (node->k_ == node->history_.size() && relocate_when_need_) {
-    other_->AddNode(node);
+void LRUKContainer::AddNode(const std::shared_ptr<LRUKNode> &node) {
+  if (node->k_ == node->history_.size() && relocate_when_need_) {  // special case for k == 1
+    other_.lock()->AddNode(node);
     return;
   }
   node_store_.insert(std::make_pair(node->fid_, node));
@@ -74,9 +67,9 @@ void LRUKContainer::AddNode(LRUKNode *node) {
   tail_->next_ = node;
   tail_ = tail_->next_;
 }
-void LRUKContainer::RemoveNode(LRUKNode *node, bool free) {
-  LRUKNode *next = node->next_;
-  LRUKNode *prev = node->prev_;
+void LRUKContainer::RemoveNode(const std::shared_ptr<LRUKNode> &node) {
+  auto next = node->next_;
+  auto prev = node->prev_;
   node->DropLinks();
   if (head_ == node) {
     head_ = next;
@@ -85,15 +78,12 @@ void LRUKContainer::RemoveNode(LRUKNode *node, bool free) {
     tail_ = prev;
   }
   node_store_.erase(node->fid_);
-  if (free) {
-    delete node;
-  }
 }
 
-void LRUKContainer::UpdateNode(LRUKNode *node, size_t timestamp) {
+void LRUKContainer::UpdateNode(const std::shared_ptr<LRUKNode> &node, size_t timestamp) {
   if (node->k_ <= node->history_.size() + 1 && relocate_when_need_) {
-    RemoveNode(node, false);
-    other_->UpdateNode(node, timestamp);
+    RemoveNode(node);
+    other_.lock()->UpdateNode(node, timestamp);
     return;
   }
 
@@ -109,7 +99,7 @@ void LRUKContainer::UpdateNode(LRUKNode *node, size_t timestamp) {
   if (node == tail_) {
     return;
   }
-  LRUKNode *next = node->next_;
+  auto next = node->next_;
   node->DropLinks();
   if (head_ == node) {
     head_ = next;
@@ -120,11 +110,11 @@ void LRUKContainer::UpdateNode(LRUKNode *node, size_t timestamp) {
 }
 
 auto LRUKContainer::Evict(frame_id_t *fid) -> bool {
-  LRUKNode *cur = head_;
+  auto cur = head_;
   while (cur != nullptr) {
     if (cur->is_evictable_) {
       *fid = cur->fid_;
-      RemoveNode(cur, true);
+      RemoveNode(cur);
       return true;
     }
     cur = cur->next_;
@@ -133,8 +123,8 @@ auto LRUKContainer::Evict(frame_id_t *fid) -> bool {
 }
 
 LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_(num_frames), k_(k) {
-  ctr_old_ = new LRUKContainer(nullptr);
-  ctr_young_ = new LRUKContainer(ctr_old_);
+  ctr_old_ = std::make_shared<LRUKContainer>(nullptr);
+  ctr_young_ = std::make_shared<LRUKContainer>(ctr_old_);
 }
 
 auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
@@ -167,7 +157,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
     ctr_old_->UpdateNode(node, current_timestamp_);
     return;
   }
-  node = new LRUKNode(k_, frame_id, current_timestamp_);
+  node = std::make_shared<LRUKNode>(k_, frame_id, current_timestamp_);
   ctr_young_->AddNode(node);
 }
 
@@ -206,7 +196,7 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
       throw std::runtime_error("lru-k-replacer: cannot remove non-evictable frame");
     }
     --curr_size_;
-    ctr_young_->RemoveNode(node, true);
+    ctr_young_->RemoveNode(node);
     return;
   }
   node = ctr_old_->FindNode(frame_id);
@@ -215,7 +205,7 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
       throw std::runtime_error("lru-k-replacer: cannot remove non-evictable frame");
     }
     --curr_size_;
-    ctr_old_->RemoveNode(node, true);
+    ctr_old_->RemoveNode(node);
     return;
   }
 }
@@ -225,9 +215,6 @@ auto LRUKReplacer::Size() -> size_t {
   return curr_size_;
 }
 
-LRUKReplacer::~LRUKReplacer() {
-  delete ctr_young_;
-  delete ctr_old_;
-}
+LRUKReplacer::~LRUKReplacer() = default;
 
 }  // namespace bustub
